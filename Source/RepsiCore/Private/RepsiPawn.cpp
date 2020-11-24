@@ -10,6 +10,8 @@
 #include "Components/InputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
+#include "Weapon.h"
+
 ARepsiPawn::ARepsiPawn(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -60,11 +62,49 @@ ARepsiPawn::ARepsiPawn(const FObjectInitializer& ObjectInitializer)
 		MovementComponent->MaxFlySpeed = 800.0f;
 		MovementComponent->BrakingDecelerationFlying = 5000.0f;
 	}
+
+	// Create an additional SceneComponent and position it where we want the
+	// root of the Weapon actor to be attached. We need to attach this to the
+	// character mesh (rather than the root of the actor) in order for the
+	// weapon to move smoothly along with the character (inheriting its client-
+	// side prediction and interpolation), which means we need to do some wonky
+	// stuff with transforms since we're just bashing temp assets together.
+	WeaponHandle = ObjectInitializer.CreateDefaultSubobject<USceneComponent>(this, TEXT("WeaponHandle"));
+	WeaponHandle->SetUsingAbsoluteScale(true);
+	WeaponHandle->SetupAttachment(MeshComponent ? MeshComponent : RootComponent);
+	WeaponHandle->SetRelativeLocation(FVector(15.0f, 8.0f, 6.0f));
+
 }
 
 void ARepsiPawn::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
+
+	// If we're running on the server, spawn a Weapon actor, attach it to the
+	// WeaponHandle, and make sure we're its owner
+	if (HasAuthority())
+	{
+		// Ensure that we're the Owner, both so that bNetUseOwnerRelevancy works
+		// as expected on the Weapon, and so that the Weapon can trace its
+		// ownership back to a PlayerController that possesses this Pawn
+		FActorSpawnParameters SpawnInfo;
+		SpawnInfo.Owner = this;
+		SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		// Spawn the Weapon - since AWeapon is replicated, the newly-spawned
+		// actor will be replicated to all clients where this pawn is relevant.
+		// Our Pawn's Weapon property is replicated, so that reference will be
+		// replicated to any client-side Pawns as well.
+		const FVector SpawnLocation = WeaponHandle->GetComponentLocation();
+		const FRotator SpawnRotation = WeaponHandle->GetComponentRotation();
+		Weapon = GetWorld()->SpawnActor<AWeapon>(SpawnLocation, SpawnRotation, SpawnInfo);
+
+		// Attach the Weapon to the pawn: actor attachment is replicated by
+		// default (see AActor::GatherCurrentMovement), so since we're setting
+		// up our attachment on the server, the weapon will be attached on
+		// clients as well
+		Weapon->AttachToComponent(WeaponHandle, FAttachmentTransformRules::SnapToTargetIncludingScale);
+	}
 
 	// Create a dynamic material instance so we can change the color of our
 	// cube on the fly. Again, this is the sort of thing that's better done in
@@ -178,5 +218,6 @@ void ARepsiPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifeti
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
+	DOREPLIFETIME(ARepsiPawn, Weapon);
 	DOREPLIFETIME(ARepsiPawn, Color);
 }

@@ -11,6 +11,16 @@ class ARepsiPawn : public ACharacter
 	GENERATED_BODY()
 
 public:
+	/** Scene component indicating where the pawn's Weapon should be attached. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	class USceneComponent* WeaponHandle;
+
+public:
+	/** The weapon that this player is holding, if any. */
+	UPROPERTY(Replicated, Transient, VisibleAnywhere, BlueprintReadOnly, Category="Weapon")
+	class AWeapon* Weapon;
+
+public:
 	/** Material instance assigned to the character mesh, giving us control over the shader parameters at runtime. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Player")
 	class UMaterialInstanceDynamic* MeshMID;
