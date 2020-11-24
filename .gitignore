@@ -1,0 +1,7 @@
+Binaries/
+Build/
+Intermediate/
+Saved/
+*.sln
+.vs/
+*.vcxproj.user
