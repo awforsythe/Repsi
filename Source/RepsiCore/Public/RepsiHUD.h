@@ -11,6 +11,11 @@ class ARepsiHUD : public AHUD
 	GENERATED_BODY()
 
 public:
+	/** Value between 0 and 1 indicating whether the crosshair is expanded to show that the player's aim location isn't valid (i.e. is too close to fire at). */
+	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly, Category="HUD")
+	float CrosshairExpandWeight;
+
+public:
 	virtual void DrawHUD() override;
 
 private:
