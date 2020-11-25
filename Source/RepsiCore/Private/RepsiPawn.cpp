@@ -104,11 +104,10 @@ void ARepsiPawn::PostInitializeComponents()
 		const FRotator SpawnRotation = WeaponHandle->GetComponentRotation();
 		Weapon = GetWorld()->SpawnActor<AWeapon>(SpawnLocation, SpawnRotation, SpawnInfo);
 
-		// Attach the Weapon to the pawn: since AWeapon overrides
-		// GatherCurrentMovement in order to opt out of attachment replication,
-		// this will only take effect on the server, so we rely on OnRep_Weapon
-		// to properly attach the weapon on clients
-		Weapon->AttachToComponent(WeaponHandle, FAttachmentTransformRules::SnapToTargetIncludingScale);
+		// Attach the weapon to the Pawn's WeaponHandle and add a tick
+		// dependency to make sure that this Pawn will always tick before the
+		// associated Weapon
+		OnRep_Weapon();
 	}
 
 	// Create a dynamic material instance so we can change the color of our
@@ -205,6 +204,7 @@ void ARepsiPawn::OnRep_Weapon()
 	if (Weapon)
 	{
 		Weapon->AttachToComponent(WeaponHandle, FAttachmentTransformRules::SnapToTargetIncludingScale);
+		Weapon->AddTickPrerequisiteActor(this);
 	}
 }
 
