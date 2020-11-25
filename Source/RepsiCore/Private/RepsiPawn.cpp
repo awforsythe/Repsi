@@ -3,6 +3,8 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
+#include "Engine/CollisionProfile.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Components/CapsuleComponent.h"
@@ -26,6 +28,9 @@ ARepsiPawn::ARepsiPawn(const FObjectInitializer& ObjectInitializer)
 	// yaw (since the player can fly, it's not fixed to the ground plane)
 	BaseEyeHeight = 18.0f;
 	bUseControllerRotationPitch = true;
+
+	// Establish a max distance for our aim traces
+	AimTraceDistance = 3000.0f;
 
 	// Make the collision capsule small enough to just cover our mesh. Note that
 	// these component getter functions would only return null if we were to
@@ -128,6 +133,52 @@ void ARepsiPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 	PlayerInputComponent->BindAxis(TEXT("LookUp"), this, &ARepsiPawn::OnLookUp);
 	PlayerInputComponent->BindAxis(TEXT("LookRightRate"), this, &ARepsiPawn::OnLookRightRate);
 	PlayerInputComponent->BindAxis(TEXT("LookUpRate"), this, &ARepsiPawn::OnLookUpRate);
+}
+
+void ARepsiPawn::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// If we have a Weapon, run a per-frame line trace into the scene to
+	// determine what we're aiming at - i.e., find the closest blocking geometry
+	// that's centered in front of our view. Note that this happens
+	// independently on the server and all clients: this trace isn't
+	// server-authoritative; it's just cosmetic. In other words, the results of
+	// this trace don't affect gameplay (unlike, for example, a trace that deals
+	// damage when the weapon is fired); it's simply used to update the rotation
+	// of the weapon to show what the player is aiming at. Therefore clients
+	// don't need to wait on the server to tell them where to aim, they can just
+	// figure out for themselves based on replicated information that they
+	// already have (namely, the transform of the pawn).
+	if (Weapon)
+	{
+		// Get our view location and forward vector: on clients, the mesh
+		// component moves smoothly with client prediction and interpolation
+		// (whereas the actor itself will have stuttery movement), so it's
+		// preferable to get our forward vector from it
+		const FVector ViewLocation = GetPawnViewLocation();
+		const FVector ViewForward = GetMesh() ? GetMesh()->GetComponentTransform().GetUnitAxis(EAxis::X) : GetActorForwardVector();
+
+		// Prepare a line trace to find the first blocking primitive beneath the
+		// center of our view
+		const FVector& TraceStart = ViewLocation;
+		const FVector TraceEnd = TraceStart + (ViewForward * AimTraceDistance);
+		const FName ProfileName = UCollisionProfile::BlockAllDynamic_ProfileName;
+		const FCollisionQueryParams QueryParams(TEXT("PlayerAim"), false, this);
+
+		// Run the trace and convey the resulting location to the Weapon. If we
+		// hit something, that's what we're aiming at; if we don't hit anything,
+		// then just aim downrange toward the point where our trace stopped.
+		FHitResult Hit;
+		if (GetWorld()->LineTraceSingleByProfile(Hit, TraceStart, TraceEnd, ProfileName, QueryParams))
+		{
+			Weapon->AimLocation = Hit.ImpactPoint;
+		}
+		else
+		{
+			Weapon->AimLocation = TraceEnd;
+		}
+	}
 }
 
 void ARepsiPawn::AuthSetColor(const FLinearColor& InColor)

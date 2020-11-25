@@ -20,6 +20,10 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_Weapon, Transient, VisibleAnywhere, BlueprintReadOnly, Category="Weapon")
 	class AWeapon* Weapon;
 
+	/** How far into the scene we'll trace in order to figure out what the player is aiming at with their weapon. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Weapon")
+	float AimTraceDistance;
+
 public:
 	/** Material instance assigned to the character mesh, giving us control over the shader parameters at runtime. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Player")
@@ -33,6 +37,7 @@ public:
 	ARepsiPawn(const FObjectInitializer& ObjectInitializer);
 	virtual void PostInitializeComponents() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Server-only: updates the color applied to this pawn's mesh MID. */
 	void AuthSetColor(const FLinearColor& InColor);

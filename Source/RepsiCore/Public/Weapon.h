@@ -19,6 +19,15 @@ public:
 	class USceneComponent* MuzzleHandle;
 
 public:
+	/** How quickly the weapon will rotate to orient itself toward the point where the player is aiming. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Weapon")
+	float AimInterpSpeed;
+
+	/** World-space location representing where the player is aiming the weapon. */
+	UPROPERTY(Transient, EditAnywhere, BlueprintReadWrite, Category="Weapon")
+	FVector AimLocation;
+
+public:
 	AWeapon(const FObjectInitializer& ObjectInitializer);
 	virtual void GatherCurrentMovement() override;
 	virtual void Tick(float DeltaSeconds) override;

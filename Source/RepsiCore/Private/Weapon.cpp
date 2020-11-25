@@ -15,6 +15,8 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 
 	PrimaryActorTick.bCanEverTick = true;
 
+	AimInterpSpeed = 8.0f;
+
 	// Make sure that weapons will be replicated as long as their owning Pawn
 	// is replicated
 	bReplicates = true;
@@ -47,11 +49,10 @@ void AWeapon::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	const float GameTime = GetWorld()->GetTimeSeconds();
-	const FVector RandomOffset(
-		FMath::Sin(GameTime * 2.1f) * 30.0f,
-		FMath::Sin(GameTime * 1.4f) * -24.0f,
-		FMath::Sin(GameTime * 1.8f) * 10.0f
-	);
-	SetActorRelativeLocation(RandomOffset);
+	const FVector AimDisplacement = AimLocation - GetActorLocation();
+	const FVector AimDirection = AimDisplacement.GetSafeNormal();
+
+	const FRotator TargetRotation = AimDirection.ToOrientationRotator();
+	const FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRotation, DeltaSeconds, AimInterpSpeed);
+	SetActorRotation(NewRotation);
 }
