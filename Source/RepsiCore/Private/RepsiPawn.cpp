@@ -156,7 +156,8 @@ void ARepsiPawn::Tick(float DeltaSeconds)
 		// (whereas the actor itself will have stuttery movement), so it's
 		// preferable to get our forward vector from it
 		const FVector ViewLocation = GetPawnViewLocation();
-		const FVector ViewForward = GetMesh() ? GetMesh()->GetComponentTransform().GetUnitAxis(EAxis::X) : GetActorForwardVector();
+		const FTransform ViewTransform = GetMesh() ? GetMesh()->GetComponentTransform() : GetActorTransform();
+		const FVector ViewForward = ViewTransform.GetUnitAxis(EAxis::X);
 
 		// Prepare a line trace to find the first blocking primitive beneath the
 		// center of our view
@@ -169,14 +170,21 @@ void ARepsiPawn::Tick(float DeltaSeconds)
 		// hit something, that's what we're aiming at; if we don't hit anything,
 		// then just aim downrange toward the point where our trace stopped.
 		FHitResult Hit;
+		FVector WorldAimLocation;
 		if (GetWorld()->LineTraceSingleByProfile(Hit, TraceStart, TraceEnd, ProfileName, QueryParams))
 		{
-			Weapon->AimLocation = Hit.ImpactPoint;
+			WorldAimLocation = Hit.ImpactPoint;
 		}
 		else
 		{
-			Weapon->AimLocation = TraceEnd;
+			WorldAimLocation = TraceEnd;
 		}
+
+		// Transform our world location into view space so that our weapon can
+		// make an informed decision about whether that location is valid for
+		// it to actually point to (it may be too close, or at an extreme angle)
+		const FVector ViewAimLocation = ViewTransform.InverseTransformPosition(WorldAimLocation);
+		Weapon->UpdateAimLocation(WorldAimLocation, ViewAimLocation);
 	}
 }
 

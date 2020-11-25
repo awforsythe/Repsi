@@ -16,6 +16,8 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 	PrimaryActorTick.bCanEverTick = true;
 
 	AimInterpSpeed = 8.0f;
+	DropInterpSpeed = 10.0f;
+	DropRotation = FRotator(-30.0f, -80.0f, 0.0f);
 
 	// Make sure that weapons will be replicated as long as their owning Pawn
 	// is replicated
@@ -49,10 +51,26 @@ void AWeapon::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	const FVector AimDisplacement = AimLocation - GetActorLocation();
-	const FVector AimDirection = AimDisplacement.GetSafeNormal();
+	if (bAimLocationIsValid)
+	{
+		const FVector AimDisplacement = AimLocation - GetActorLocation();
+		const FVector AimDirection = AimDisplacement.GetSafeNormal();
 
-	const FRotator TargetRotation = AimDirection.ToOrientationRotator();
-	const FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRotation, DeltaSeconds, AimInterpSpeed);
-	SetActorRotation(NewRotation);
+		const FQuat TargetRotation = AimDirection.ToOrientationQuat();
+		const FQuat NewRotation = FMath::QInterpTo(GetActorQuat(), TargetRotation, DeltaSeconds, AimInterpSpeed);
+		SetActorRotation(NewRotation);
+	}
+	else
+	{
+		AActor* AttachParent = GetAttachParentActor();
+		const FQuat TargetRotation = AttachParent ? AttachParent->GetActorTransform().TransformRotation(FQuat(DropRotation)) : FQuat(DropRotation);
+		const FQuat NewRotation = FMath::QInterpTo(GetActorQuat(), TargetRotation, DeltaSeconds, DropInterpSpeed);
+		SetActorRotation(NewRotation);
+	}
+}
+
+void AWeapon::UpdateAimLocation(const FVector& InWorldAimLocation, const FVector& InViewAimLocation)
+{
+	AimLocation = InWorldAimLocation;
+	bAimLocationIsValid = InViewAimLocation.X > MuzzleHandle->GetRelativeLocation().X;
 }
