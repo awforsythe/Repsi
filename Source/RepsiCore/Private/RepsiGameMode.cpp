@@ -2,12 +2,14 @@
 
 #include "RepsiPlayerController.h"
 #include "RepsiPawn.h"
+#include "RepsiHUD.h"
 
 ARepsiGameMode::ARepsiGameMode(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	PlayerControllerClass = ARepsiPlayerController::StaticClass();
 	DefaultPawnClass = ARepsiPawn::StaticClass();
+	HUDClass = ARepsiHUD::StaticClass();
 
 	// Establish a sequence of arbitrary colors that we'll apply to each player
 	// pawn, round-robin in the order in which they're spawned
