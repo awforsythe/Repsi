@@ -39,18 +39,19 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 	MuzzleHandle->SetRelativeLocation(FVector(50.0f, 0.0f, 0.0f));
 }
 
+void AWeapon::GatherCurrentMovement()
+{
+}
+
 void AWeapon::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (HasAuthority())
-	{
-		const float GameTime = GetWorld()->GetTimeSeconds();
-		const FVector RandomOffset(
-			FMath::Sin(GameTime * 2.1f) * 30.0f,
-			FMath::Sin(GameTime * 1.4f) * -24.0f,
-			FMath::Sin(GameTime * 1.8f) * 10.0f
-		);
-		SetActorRelativeLocation(RandomOffset);
-	}
+	const float GameTime = GetWorld()->GetTimeSeconds();
+	const FVector RandomOffset(
+		FMath::Sin(GameTime * 2.1f) * 30.0f,
+		FMath::Sin(GameTime * 1.4f) * -24.0f,
+		FMath::Sin(GameTime * 1.8f) * 10.0f
+	);
+	SetActorRelativeLocation(RandomOffset);
 }

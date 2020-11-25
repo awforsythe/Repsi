@@ -99,10 +99,10 @@ void ARepsiPawn::PostInitializeComponents()
 		const FRotator SpawnRotation = WeaponHandle->GetComponentRotation();
 		Weapon = GetWorld()->SpawnActor<AWeapon>(SpawnLocation, SpawnRotation, SpawnInfo);
 
-		// Attach the Weapon to the pawn: actor attachment is replicated by
-		// default (see AActor::GatherCurrentMovement), so since we're setting
-		// up our attachment on the server, the weapon will be attached on
-		// clients as well
+		// Attach the Weapon to the pawn: since AWeapon overrides
+		// GatherCurrentMovement in order to opt out of attachment replication,
+		// this will only take effect on the server, so we rely on OnRep_Weapon
+		// to properly attach the weapon on clients
 		Weapon->AttachToComponent(WeaponHandle, FAttachmentTransformRules::SnapToTargetIncludingScale);
 	}
 
@@ -147,6 +147,14 @@ void ARepsiPawn::AuthSetColor(const FLinearColor& InColor)
 	// exactly what happens in our notify function, we can just call that
 	// function directly.
 	OnRep_Color();
+}
+
+void ARepsiPawn::OnRep_Weapon()
+{
+	if (Weapon)
+	{
+		Weapon->AttachToComponent(WeaponHandle, FAttachmentTransformRules::SnapToTargetIncludingScale);
+	}
 }
 
 void ARepsiPawn::OnRep_Color()

@@ -20,5 +20,6 @@ public:
 
 public:
 	AWeapon(const FObjectInitializer& ObjectInitializer);
+	virtual void GatherCurrentMovement() override;
 	virtual void Tick(float DeltaSeconds) override;
 };

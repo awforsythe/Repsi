@@ -17,7 +17,7 @@ public:
 
 public:
 	/** The weapon that this player is holding, if any. */
-	UPROPERTY(Replicated, Transient, VisibleAnywhere, BlueprintReadOnly, Category="Weapon")
+	UPROPERTY(ReplicatedUsing=OnRep_Weapon, Transient, VisibleAnywhere, BlueprintReadOnly, Category="Weapon")
 	class AWeapon* Weapon;
 
 public:
@@ -38,6 +38,10 @@ public:
 	void AuthSetColor(const FLinearColor& InColor);
 
 private:
+	/** For client-side Pawns, ensures that the Weapon is attached to the WeaponHandle. */
+	UFUNCTION()
+	void OnRep_Weapon();
+
 	/** Updates the MeshMID's color parameter to match our current Color property. */
 	UFUNCTION()
 	void OnRep_Color();
