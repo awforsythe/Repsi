@@ -13,6 +13,8 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> MeshFinder(TEXT("StaticMesh'/Engine/BasicShapes/Cube.Cube'"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("Material'/Game/Assets/Weapon/M_Weapon.M_Weapon'"));
 
+	PrimaryActorTick.bCanEverTick = true;
+
 	// Make sure that weapons will be replicated as long as their owning Pawn
 	// is replicated
 	bReplicates = true;
@@ -35,4 +37,20 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 	MuzzleHandle = ObjectInitializer.CreateDefaultSubobject<USceneComponent>(this, TEXT("MuzzleHandle"));
 	MuzzleHandle->SetupAttachment(RootComponent);
 	MuzzleHandle->SetRelativeLocation(FVector(50.0f, 0.0f, 0.0f));
+}
+
+void AWeapon::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	if (HasAuthority())
+	{
+		const float GameTime = GetWorld()->GetTimeSeconds();
+		const FVector RandomOffset(
+			FMath::Sin(GameTime * 2.1f) * 30.0f,
+			FMath::Sin(GameTime * 1.4f) * -24.0f,
+			FMath::Sin(GameTime * 1.8f) * 10.0f
+		);
+		SetActorRelativeLocation(RandomOffset);
+	}
 }

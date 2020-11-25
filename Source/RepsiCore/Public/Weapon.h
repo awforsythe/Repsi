@@ -20,4 +20,5 @@ public:
 
 public:
 	AWeapon(const FObjectInitializer& ObjectInitializer);
+	virtual void Tick(float DeltaSeconds) override;
 };
