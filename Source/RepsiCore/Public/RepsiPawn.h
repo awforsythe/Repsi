@@ -52,6 +52,7 @@ private:
 	void OnRep_Color();
 
 private:
+	UFUNCTION() void OnFire();
 	UFUNCTION() void OnMoveForward(float AxisValue);
 	UFUNCTION() void OnMoveRight(float AxisValue);
 	UFUNCTION() void OnMoveUp(float AxisValue);

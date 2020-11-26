@@ -124,6 +124,9 @@ void ARepsiPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 {
 	check(PlayerInputComponent);
 
+	// Bind weapon actions
+	PlayerInputComponent->BindAction(TEXT("Fire"), IE_Pressed, this, &ARepsiPawn::OnFire);
+
 	// Bind movement inputs (mostly parroted from DefaultPawn.cpp)
 	PlayerInputComponent->BindAxis(TEXT("MoveForward"), this, &ARepsiPawn::OnMoveForward);
 	PlayerInputComponent->BindAxis(TEXT("MoveRight"), this, &ARepsiPawn::OnMoveRight);
@@ -224,6 +227,19 @@ void ARepsiPawn::OnRep_Color()
 	if (MeshMID)
 	{
 		MeshMID->SetVectorParameterValue(TEXT("Color"), Color);
+	}
+}
+
+void ARepsiPawn::OnFire()
+{
+	// Forward the input to the weapon: input is processed on the client, so
+	// the weapon will have to issue a Server RPC in order to notify the server
+	// that the player wants to fire the weapon. The weapon is able to issue
+	// Server RPCs because it's owned by the client connection: the
+	// PlayerController owns this Pawn, and this Pawn owns the Weapon.
+	if (Weapon)
+	{
+		Weapon->HandleFireInput();
 	}
 }
 
