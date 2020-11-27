@@ -2,6 +2,7 @@
 
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/CollisionProfile.h"
 #include "Materials/MaterialInterface.h"
@@ -18,9 +19,14 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 {
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> MeshFinder(TEXT("StaticMesh'/Engine/BasicShapes/Cube.Cube'"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MaterialFinder(TEXT("Material'/Game/Assets/Weapon/M_Weapon.M_Weapon'"));
+
 	static ConstructorHelpers::FObjectFinder<UParticleSystem> FireEffectFinder(TEXT("ParticleSystem'/Game/Assets/Weapon/PS_MuzzleFlash.PS_MuzzleFlash'"));
+	static ConstructorHelpers::FObjectFinder<UParticleSystem> ImpactEffectFinder(TEXT("ParticleSystem'/Game/Assets/Weapon/PS_WeaponImpact.PS_WeaponImpact'"));
+
 	static ConstructorHelpers::FObjectFinder<USoundBase> FireSoundFinder(TEXT("SoundCue'/Game/Audio/A_Weapon_Fire.A_Weapon_Fire'"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> DryFireSoundFinder(TEXT("SoundCue'/Game/Audio/A_Weapon_DryFire.A_Weapon_DryFire'"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> DamagingImpactSoundFinder(TEXT("SoundCue'/Game/Audio/A_WeaponImpact_Damaging.A_WeaponImpact_Damaging'"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> NonDamagingImpactSoundFinder(TEXT("SoundCue'/Game/Audio/A_WeaponImpact_NonDamaging.A_WeaponImpact_NonDamaging'"));
 
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -58,8 +64,11 @@ AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 
 	// Cache asset references for visual effects and audio
 	FireEffect = FireEffectFinder.Object;
+	ImpactEffect = ImpactEffectFinder.Object;
 	FireSound = FireSoundFinder.Object;
 	DryFireSound = DryFireSoundFinder.Object;
+	DamagingImpactSound = DamagingImpactSoundFinder.Object;
+	NonDamagingImpactSound = NonDamagingImpactSoundFinder.Object;
 }
 
 void AWeapon::GatherCurrentMovement()
@@ -111,7 +120,9 @@ void AWeapon::HandleFireInput()
 		// the end result is the same (and technically the separate client and
 		// server cooldown checks are redundant in that case, but that's not
 		// significant enough to warrant special-case logic for single-player)
-		Server_TryFire();
+		const FVector MuzzleLocation = MuzzleHandle->GetComponentLocation();
+		const FVector Direction = MuzzleHandle->GetComponentQuat().Vector();
+		Server_TryFire(MuzzleLocation, Direction);
 		LastFireTime = CurrentTime;
 
 		// Spawn cosmetic effects (particles, sound) for the local player: we
@@ -119,6 +130,14 @@ void AWeapon::HandleFireInput()
 		// with 100% certainty that we've successfully fired) so that the player
 		// has instant feedback as soon as they press the button
 		PlayFireEffects();
+
+		// Run a cosmetic line trace just to see whether we should spawn an
+		// impact effect
+		FHitResult Hit;
+		if (RunFireTrace(Hit))
+		{
+			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, false);
+		}
 	}
 	else
 	{
@@ -127,7 +146,7 @@ void AWeapon::HandleFireInput()
 	}
 }
 
-void AWeapon::Server_TryFire_Implementation()
+void AWeapon::Server_TryFire_Implementation(const FVector& MuzzleLocation, const FVector& Direction)
 {
 	// We're now running with authority: whereas HandleFireInput is repsonsible
 	// for responding to the input by deciding if we should ask the server to
@@ -143,13 +162,33 @@ void AWeapon::Server_TryFire_Implementation()
 		// Cache our last fire time: note that LastFireTime isn't replicated;
 		// it's updated independently on the server and on clients
 		LastFireTime = CurrentTime;
-
-		// Update our LastFirePacket to reflect that the server has allowed the
-		// weapon to fire: this will replicate to non-owning clients (i.e. it
-		// won't be sent to the player who originally issued this RPC), causing
-		// OnRep_LastFirePacket to be called - this will give those clients a
-		// chance to spawn weapon fire effects
 		LastFirePacket.ServerFireTime = CurrentTime;
+
+		const FVector& TraceStart = MuzzleHandle->GetComponentLocation();
+		const FVector TraceEnd = TraceStart + (MuzzleHandle->GetForwardVector() * 5000.0f);
+		const FName ProfileName = UCollisionProfile::BlockAllDynamic_ProfileName;
+		const FCollisionQueryParams QueryParams(TEXT("WeaponFire"), false, GetOwner());
+
+		FHitResult Hit;
+		if (RunFireTrace(Hit))
+		{
+			// Update our LastFirePacket to reflect that the server has allowed
+			// the weapon to fire: this will replicate to non-owning clients
+			// (i.e. it won't be sent to the player who originally issued this
+			// RPC), causing OnRep_LastFirePacket to be called - this will give
+			// those clients a chance to spawn weapon fire effects
+			LastFirePacket.bCausedDamage = false;
+			LastFirePacket.ImpactPoint = Hit.ImpactPoint;
+			LastFirePacket.ImpactNormal = Hit.ImpactNormal;
+
+			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, false);
+		}
+		else
+		{
+			// Set ImpactNormal to zero as a sentinel to indicate that this
+			// shot didn't hit anything
+			LastFirePacket.ImpactNormal = FVector::ZeroVector;
+		}
 	}
 }
 
@@ -162,6 +201,11 @@ void AWeapon::OnRep_LastFirePacket()
 	// need to do here is spawn cosmetic effects so that the local player can
 	// see that this weapon has just been fired.
 	PlayFireEffects();
+
+	if (!LastFirePacket.ImpactNormal.IsZero())
+	{
+		PlayImpactEffects(LastFirePacket.ImpactPoint, LastFirePacket.ImpactNormal, LastFirePacket.bCausedDamage);
+	}
 }
 
 void AWeapon::PlayFireEffects()
@@ -189,6 +233,31 @@ void AWeapon::PlayUnableToFireEffects()
 	{
 		UGameplayStatics::PlaySoundAtLocation(GetWorld(), DryFireSound, MuzzleHandle->GetComponentLocation(), MuzzleHandle->GetComponentRotation());
 	}
+}
+
+void AWeapon::PlayImpactEffects(const FVector& ImpactPoint, const FVector& ImpactNormal, bool bCausedDamage)
+{
+	const FRotator ImpactRotation = ImpactNormal.ToOrientationRotator();
+
+	if (ImpactEffect)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), FireEffect, ImpactPoint, ImpactRotation);
+	}
+
+	USoundBase* Sound = bCausedDamage ? DamagingImpactSound : NonDamagingImpactSound;
+	if (Sound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(GetWorld(), Sound, ImpactPoint, ImpactRotation);
+	}
+}
+
+bool AWeapon::RunFireTrace(FHitResult& OutHit)
+{
+	const FVector& TraceStart = MuzzleHandle->GetComponentLocation();
+	const FVector TraceEnd = TraceStart + (MuzzleHandle->GetForwardVector() * 5000.0f);
+	const FName ProfileName = UCollisionProfile::BlockAllDynamic_ProfileName;
+	const FCollisionQueryParams QueryParams(TEXT("WeaponFire"), false, GetOwner());
+	return GetWorld()->LineTraceSingleByProfile(OutHit, TraceStart, TraceEnd, ProfileName, QueryParams);
 }
 
 void AWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

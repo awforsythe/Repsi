@@ -10,8 +10,21 @@ struct FWeaponFirePacket
 {
 	GENERATED_BODY()
 
+	/** Game time on the server when this fire event occurred. */
 	UPROPERTY()
 	float ServerFireTime;
+
+	/** Whether the weapon hit an actor and caused damage. */
+	UPROPERTY()
+	bool bCausedDamage;
+
+	/** World-space location where the blocking hit occurred, if any. */
+	UPROPERTY()
+	FVector_NetQuantize ImpactPoint;
+
+	/** World-space surface normal of the hit: if zero, no hit occurred. */
+	UPROPERTY()
+	FVector_NetQuantizeNormal ImpactNormal;
 };
 
 UCLASS()
@@ -40,6 +53,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Firing")
 	class UParticleSystem* FireEffect;
 
+	/** Particle system spawned when the weapon hits something (with +X oriented along the impact normal). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Firing")
+	class UParticleSystem* ImpactEffect;
+
 	/** Sound to play when the weapon is fired. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Firing")
 	class USoundBase* FireSound;
@@ -47,6 +64,14 @@ public:
 	/** Sound to play in response to a Fire input when the weapon isn't yet ready to fire. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Firing")
 	class USoundBase* DryFireSound;
+
+	/** Sound to play when the weapon hits an actor and successfully deals damage. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Firing")
+	class USoundBase* DamagingImpactSound;
+
+	/** Sound to play when the weapon hits an inert surface. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Firing")
+	class USoundBase* NonDamagingImpactSound;
 
 	/** Replicated to non-owning clients: contains information about the last fire event that the server generated for this weapon. */
 	UPROPERTY(ReplicatedUsing=OnRep_LastFirePacket, VisibleAnywhere, BlueprintReadOnly, Category="Firing|State")
@@ -83,7 +108,7 @@ public:
 
 public:
 	UFUNCTION(Server, Reliable)
-	void Server_TryFire();
+	void Server_TryFire(const FVector& MuzzleLocation, const FVector& Direction);
 
 	UFUNCTION()
 	void OnRep_LastFirePacket();
@@ -91,4 +116,7 @@ public:
 private:
 	void PlayFireEffects();
 	void PlayUnableToFireEffects();
+	void PlayImpactEffects(const FVector& ImpactPoint, const FVector& ImpactNormal, bool bCausedDamage);
+
+	bool RunFireTrace(FHitResult& OutHit);
 };
