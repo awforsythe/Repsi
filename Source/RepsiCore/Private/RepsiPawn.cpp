@@ -94,6 +94,7 @@ void ARepsiPawn::PostInitializeComponents()
 		// ownership back to a PlayerController that possesses this Pawn
 		FActorSpawnParameters SpawnInfo;
 		SpawnInfo.Owner = this;
+		SpawnInfo.Instigator = this;
 		SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 		// Spawn the Weapon - since AWeapon is replicated, the newly-spawned
@@ -214,6 +215,9 @@ void ARepsiPawn::OnRep_Weapon()
 {
 	if (Weapon)
 	{
+		// Fix the weapon into place beneath our WeaponHandle component, and
+		// make sure that the Pawn ticks before the Weapon, since the Weapon's
+		// aiming motion is dependent on the aim location computed by the Pawn
 		Weapon->AttachToComponent(WeaponHandle, FAttachmentTransformRules::SnapToTargetIncludingScale);
 		Weapon->AddTickPrerequisiteActor(this);
 	}

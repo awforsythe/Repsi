@@ -3,6 +3,7 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/World.h"
+#include "Engine/EngineTypes.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/CollisionProfile.h"
 #include "Materials/MaterialInterface.h"
@@ -10,9 +11,11 @@
 #include "Sound/SoundBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 
 #include "Log.h"
+#include "DamageType_WeaponFire.h"
 
 AWeapon::AWeapon(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -125,18 +128,31 @@ void AWeapon::HandleFireInput()
 		Server_TryFire(MuzzleLocation, Direction);
 		LastFireTime = CurrentTime;
 
-		// Spawn cosmetic effects (particles, sound) for the local player: we
-		// do this immediately (rather than waiting for the server to tell us
-		// with 100% certainty that we've successfully fired) so that the player
-		// has instant feedback as soon as they press the button
-		PlayFireEffects();
-
-		// Run a cosmetic line trace just to see whether we should spawn an
-		// impact effect
-		FHitResult Hit;
-		if (RunFireTrace(Hit))
+		// If this weapon, belonging to the locally controlled player, has
+		// authority, that means we're either running standalone or as a listen
+		// server. In that case, Server_TryFire will execute right away, and it
+		// will spawn cosmetic effects right away. But if we *don't* have
+		// authority, we're running as a client, which means there's latency
+		// between when the player fires the weapon and when the server decides
+		// where the shot lands. So if we're a client, we want to spawn cosmetic
+		// effects (particles, sound) right away, rather than waiting for the
+		// server to tell us with 100% certainty that we've successfully fired).
+		// This means our effects are non-authoritative (i.e. we're speculating
+		// about what we hit and hoping that we're right, but the server has the
+		// final say and might disagree), but it gives the player immediate
+		// visual feedback, without which their game would feel laggy.
+		if (!HasAuthority())
 		{
-			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, false);
+			PlayFireEffects();
+
+			// Run a cosmetic line trace just to see whether we should spawn an
+			// impact effect
+			FHitResult Hit;
+			if (RunFireTrace(Hit))
+			{
+				const bool bWillProbablyCauseDamage = Hit.Actor.IsValid() && Hit.Actor->CanBeDamaged();
+				PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, bWillProbablyCauseDamage);
+			}
 		}
 	}
 	else
@@ -162,26 +178,43 @@ void AWeapon::Server_TryFire_Implementation(const FVector& MuzzleLocation, const
 		// Cache our last fire time: note that LastFireTime isn't replicated;
 		// it's updated independently on the server and on clients
 		LastFireTime = CurrentTime;
+
+		// Update our LastFirePacket to reflect that the server has allowed the
+		// weapon to fire: this will replicate to non-owning clients (i.e. it
+		// won't be sent to the player who originally issued this RPC), causing
+		// their OnRep_LastFirePacket function to be called
 		LastFirePacket.ServerFireTime = CurrentTime;
 
-		const FVector& TraceStart = MuzzleHandle->GetComponentLocation();
-		const FVector TraceEnd = TraceStart + (MuzzleHandle->GetForwardVector() * 5000.0f);
-		const FName ProfileName = UCollisionProfile::BlockAllDynamic_ProfileName;
-		const FCollisionQueryParams QueryParams(TEXT("WeaponFire"), false, GetOwner());
-
+		// Run a server-authoritative line trace to determine if there's
+		// any blocking geometry in the path of the shot, and if so, whether
+		// that's a primitive belonging to an actor who we might deal damage to
 		FHitResult Hit;
 		if (RunFireTrace(Hit))
 		{
-			// Update our LastFirePacket to reflect that the server has allowed
-			// the weapon to fire: this will replicate to non-owning clients
-			// (i.e. it won't be sent to the player who originally issued this
-			// RPC), causing OnRep_LastFirePacket to be called - this will give
-			// those clients a chance to spawn weapon fire effects
-			LastFirePacket.bCausedDamage = false;
+			// If we hit a damageable actor, attempt to damage it
+			float DamageCaused = 0.0f;
+			if (Hit.Actor.IsValid() && Hit.Actor->CanBeDamaged())
+			{
+				const float BaseDamage = 1.0f;
+				const FPointDamageEvent DamageEvent(BaseDamage, Hit, Direction, UDamageType_WeaponFire::StaticClass());
+				DamageCaused = Hit.Actor->TakeDamage(BaseDamage, DamageEvent, GetInstigatorController(), this);
+			}
+
+			// Spawn particle effects and audio server-side: note that we're
+			// using UGameplayStatics functions which have no effect on
+			// dedicated server, so while we could gate these calls behind
+			// IsRunningDedicatedServer(), it's not strictly necessary. Either
+			// way, these function calls take effect if we're running standalone
+			// or as listen server.
+			PlayFireEffects();
+			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, DamageCaused > 0.0f);
+
+			// Propagate the details of our hit to non-owning clients: this
+			// gives them everything they need to know in order to spawn their
+			// own cosmetic effectst
+			LastFirePacket.bCausedDamage = DamageCaused > 0.0f;
 			LastFirePacket.ImpactPoint = Hit.ImpactPoint;
 			LastFirePacket.ImpactNormal = Hit.ImpactNormal;
-
-			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, false);
 		}
 		else
 		{
@@ -196,7 +229,7 @@ void AWeapon::OnRep_LastFirePacket()
 {
 	// LastFirePacket is replicated with COND_SkipOwner, so if we get this
 	// notify, that means we're a remote client (i.e. not the client that owns
-	// this weapon), so this weapon belongs to a non-local player. Since all
+	// this weapon) -- this weapon belongs to a non-local player. Since all
 	// the gameplay-authoritative stuff happens separately on the server, all we
 	// need to do here is spawn cosmetic effects so that the local player can
 	// see that this weapon has just been fired.
