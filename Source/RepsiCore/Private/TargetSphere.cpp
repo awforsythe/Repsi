@@ -21,6 +21,11 @@ ATargetSphere::ATargetSphere(const FObjectInitializer& ObjectInitializer)
 	bReplicates = true;
 	NetCullDistanceSquared = FMath::Square(1500.0f);
 
+	// This actor will tick for a moment after it's shot, so it can animate its color
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
+	ColorChangeDuration = 0.333f;
+
 	// Make our Actor damageable initially, so Weapon traces will deal damage
 	SetCanBeDamaged(true);
 
@@ -55,12 +60,39 @@ float ATargetSphere::InternalTakePointDamage(float Damage, FPointDamageEvent con
 	return Super::InternalTakePointDamage(Damage, PointDamageEvent, EventInstigator, DamageCauser);
 }
 
+void ATargetSphere::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// Compute our relative progress in the color change animation
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	const float ColorChangeElapsed = CurrentTime - LastColorChangeTime;
+	const float ColorChangeAlpha = ColorChangeDuration < KINDA_SMALL_NUMBER ? 1.0f : FMath::Min(1.0f, ColorChangeElapsed / ColorChangeDuration);
+
+	// Start interpolating toward a brighter version of new color, settling on
+	// the unmodified color at the end
+	const FLinearColor TargetColor = Color * FMath::Lerp(10.0f, 1.0f, ColorChangeAlpha);
+	const FLinearColor NewColor = FLinearColor::LerpUsingHSV(PreviousColor, TargetColor, ColorChangeAlpha);
+	if (MeshMID)
+	{
+		MeshMID->SetVectorParameterValue(TEXT("Color"), NewColor);
+	}
+
+	// Disable ticking once the animation is finished
+	if (ColorChangeAlpha >= 1.0f)
+	{
+		SetActorTickEnabled(false);
+	}
+}
+
 void ATargetSphere::OnRep_Color()
 {
 	if (MeshMID)
 	{
-		MeshMID->SetVectorParameterValue(TEXT("Color"), Color);
+		PreviousColor = MeshMID->K2_GetVectorParameterValue(TEXT("Color"));
 	}
+	LastColorChangeTime = GetWorld()->GetTimeSeconds();
+	SetActorTickEnabled(true);
 }
 
 void ATargetSphere::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
