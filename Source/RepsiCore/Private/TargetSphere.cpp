@@ -9,6 +9,7 @@
 #include "Components/StaticMeshComponent.h"
 
 #include "DamageType_WeaponFire.h"
+#include "RepsiPawn.h"
 
 ATargetSphere::ATargetSphere(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -43,8 +44,12 @@ float ATargetSphere::InternalTakePointDamage(float Damage, FPointDamageEvent con
 	// If shot with a Weapon, accept the damage event and randomize the sphere's Color
 	if (PointDamageEvent.DamageTypeClass == UDamageType_WeaponFire::StaticClass())
 	{
-		Color = FLinearColor::MakeRandomColor();
-		OnRep_Color();
+		const ARepsiPawn* Pawn = EventInstigator ? EventInstigator->GetPawn<ARepsiPawn>() : nullptr;
+		if (Pawn)
+		{
+			Color = Pawn->Color;
+			OnRep_Color();
+		}
 		return Damage;
 	}
 	return Super::InternalTakePointDamage(Damage, PointDamageEvent, EventInstigator, DamageCauser);
