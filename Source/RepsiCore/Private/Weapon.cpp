@@ -150,7 +150,7 @@ void AWeapon::HandleFireInput()
 			FHitResult Hit;
 			if (RunFireTrace(Hit))
 			{
-				const bool bWillProbablyCauseDamage = Hit.Actor.IsValid() && Hit.Actor->CanBeDamaged();
+				const bool bWillProbablyCauseDamage = Hit.HitObjectHandle.IsValid() && Hit.HitObjectHandle.FetchActor()->CanBeDamaged();
 				PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, bWillProbablyCauseDamage);
 			}
 		}
@@ -193,11 +193,11 @@ void AWeapon::Server_TryFire_Implementation(const FVector& MuzzleLocation, const
 		{
 			// If we hit a damageable actor, attempt to damage it
 			float DamageCaused = 0.0f;
-			if (Hit.Actor.IsValid() && Hit.Actor->CanBeDamaged())
+			if (Hit.HitObjectHandle.IsValid() && Hit.HitObjectHandle.FetchActor()->CanBeDamaged())
 			{
 				const float BaseDamage = 1.0f;
 				const FPointDamageEvent DamageEvent(BaseDamage, Hit, Direction, UDamageType_WeaponFire::StaticClass());
-				DamageCaused = Hit.Actor->TakeDamage(BaseDamage, DamageEvent, GetInstigatorController(), this);
+				DamageCaused = Hit.HitObjectHandle.FetchActor()->TakeDamage(BaseDamage, DamageEvent, GetInstigatorController(), this);
 			}
 
 			// Spawn particle effects and audio server-side: note that we're
